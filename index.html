@@ -1,0 +1,1556 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>3D Solar System - Planets and Dwarf Planets</title>
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+            background-color: #000;
+            overflow: hidden;
+            height: 100vh;
+            font-family: Arial, sans-serif;
+        }
+        
+        canvas {
+            display: block;
+        }
+        
+        #info {
+            position: absolute;
+            top: 10px;
+            width: 100%;
+            text-align: center;
+            color: white;
+            font-size: 14px;
+            pointer-events: none;
+            z-index: 100;
+        }
+        
+        #navigation {
+            position: absolute;
+            top: 10px;
+            left: 10px;
+            color: white;
+            background-color: rgba(0, 0, 0, 0.7);
+            padding: 10px;
+            border-radius: 5px;
+            max-height: 90vh;
+            overflow-y: auto;
+            z-index: 100;
+            max-width: 300px;
+        }
+        
+        #navigation h3 {
+            margin: 0 0 10px 0;
+            text-align: center;
+        }
+        
+        #navigation ul {
+            list-style-type: none;
+            padding: 0;
+            margin: 0;
+            max-height: 80vh;
+            overflow-y: auto;
+        }
+        
+        #navigation li {
+            margin: 5px 0;
+        }
+        
+        #navigation button {
+            background-color: #333;
+            color: white;
+            border: none;
+            padding: 5px 10px;
+            width: 100%;
+            text-align: left;
+            border-radius: 3px;
+            cursor: pointer;
+        }
+        
+        #navigation button:hover {
+            background-color: #555;
+        }
+        
+        .planet-info {
+            position: absolute;
+            background-color: rgba(0, 0, 0, 0.8);
+            color: white;
+            padding: 10px;
+            border-radius: 5px;
+            font-size: 12px;
+            pointer-events: none;
+            z-index: 1000;
+            min-width: 150px;
+            display: none;
+        }
+        
+        .planet-info h3 {
+            margin: 0 0 5px 0;
+            font-size: 14px;
+        }
+        
+        .planet-info p {
+            margin: 2px 0;
+        }
+        
+        #followIndicator {
+            position: absolute;
+            top: 40px;
+            left: 50%;
+            transform: translateX(-50%);
+            color: white;
+            background-color: rgba(0, 0, 0, 0.7);
+            padding: 5px 10px;
+            border-radius: 3px;
+            display: none;
+            z-index: 100;
+        }
+    </style>
+</head>
+<body>
+    <div id="info">
+        <p>Controls: Left click + drag to rotate | Right click + drag to pan | Scroll to zoom | Click on objects for information</p>
+    </div>
+    <div id="navigation">
+        <h3>Celestial Bodies</h3>
+        <ul id="celestialList"></ul>
+    </div>
+    <div id="followIndicator">Following: <span id="followTarget"></span> | Move camera to stop following</div>
+    <div id="planetInfo" class="planet-info"></div>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.128/examples/js/controls/OrbitControls.js"></script>
+    <script>
+        // Create scene, camera, and renderer
+        const scene = new THREE.Scene();
+        const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 20000);
+        const renderer = new THREE.WebGLRenderer({ antialias: true });
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        document.body.appendChild(renderer.domElement);
+
+        // Add orbit controls
+        const controls = new THREE.OrbitControls(camera, renderer.domElement);
+        controls.enableDamping = true;
+        controls.dampingFactor = 0.05;
+        controls.screenSpacePanning = false;
+        controls.minDistance = 5;
+        controls.maxDistance = 5000;
+
+        // Track if we're following a celestial body
+        let followingTarget = null;
+        let followingOffset = new THREE.Vector3(0, 30, 50);
+        let userHasMovedCamera = false;
+
+        // Listen for user camera movements
+        let isDragging = false;
+        let isClickingObject = false;
+        controls.addEventListener('start', () => {
+            // Only stop following if we're actually dragging (not clicking on an object)
+            if (!isClickingObject) {
+                isDragging = true;
+                userHasMovedCamera = true;
+                stopFollowing();
+            }
+            isClickingObject = false; // Reset the flag
+        });
+        
+        controls.addEventListener('end', () => {
+            isDragging = false;
+        });
+
+        // Simplified starfield background
+        const createStarfield = () => {
+            const starsGeometry = new THREE.BufferGeometry();
+            const starsMaterial = new THREE.PointsMaterial({
+                color: 0xffffff,
+                size: 1.5,
+                sizeAttenuation: false
+            });
+            
+            const starsVertices = [];
+            const starCount = 5000;
+            
+            for (let i = 0; i < starCount; i++) {
+                const x = THREE.MathUtils.randFloatSpread(20000);
+                const y = THREE.MathUtils.randFloatSpread(20000);
+                const z = THREE.MathUtils.randFloatSpread(20000);
+                
+                starsVertices.push(x, y, z);
+            }
+            
+            starsGeometry.setAttribute('position', new THREE.Float32BufferAttribute(starsVertices, 3));
+            const starField = new THREE.Points(starsGeometry, starsMaterial);
+            return starField;
+        };
+        
+        const starField = createStarfield();
+        scene.add(starField);
+
+        // Create the Sun with more realistic size (scaled for visualization)
+        const sunGeometry = new THREE.SphereGeometry(30, 64, 64);
+        const sunMaterial = new THREE.MeshBasicMaterial({ 
+            color: 0xffff00
+        });
+        const sun = new THREE.Mesh(sunGeometry, sunMaterial);
+        
+        // Add sun glow
+        const sunGlowGeometry = new THREE.SphereGeometry(35, 32, 32);
+        const sunGlowMaterial = new THREE.MeshBasicMaterial({
+            color: 0xffaa33,
+            transparent: true,
+            opacity: 0.4
+        });
+        const sunGlow = new THREE.Mesh(sunGlowGeometry, sunGlowMaterial);
+        
+        // Add sun corona effect
+        const sunCoronaGeometry = new THREE.SphereGeometry(40, 32, 32);
+        const sunCoronaMaterial = new THREE.MeshBasicMaterial({
+            color: 0xff6600,
+            transparent: true,
+            opacity: 0.2
+        });
+        const sunCorona = new THREE.Mesh(sunCoronaGeometry, sunCoronaMaterial);
+        
+        const sunGroup = new THREE.Group();
+        sunGroup.add(sun);
+        sunGroup.add(sunGlow);
+        sunGroup.add(sunCorona);
+        scene.add(sunGroup);
+
+        // Create orbital paths (ellipses) with accurate data and inclinations
+        const createOrbit = (semiMajorAxis, eccentricity, inclination, isDwarf = false) => {
+            const points = [];
+            const segments = 128;
+            
+            // Create orbit points in 3D space
+            for (let i = 0; i <= segments; i++) {
+                const theta = (i / segments) * Math.PI * 2;
+                // For elliptical orbits: r = a(1-e²)/(1+e*cos(θ))
+                const r = semiMajorAxis * (1 - eccentricity * eccentricity) / (1 + eccentricity * Math.cos(theta));
+                const x = r * Math.cos(theta);
+                const z = r * Math.sin(theta);
+                
+                // Apply orbital inclination
+                const y = z * Math.sin(inclination * Math.PI / 180);
+                const adjustedZ = z * Math.cos(inclination * Math.PI / 180);
+                
+                points.push(new THREE.Vector3(x, y, adjustedZ));
+            }
+            
+            const orbitGeometry = new THREE.BufferGeometry().setFromPoints(points);
+            const orbitMaterial = new THREE.LineBasicMaterial({ 
+                color: isDwarf ? 0xaaaaaa : 0xffffff,
+                transparent: true,
+                opacity: isDwarf ? 0.3 : 0.4
+            });
+            
+            const orbit = new THREE.Line(orbitGeometry, orbitMaterial);
+            scene.add(orbit);
+            return orbit;
+        };
+
+        // Planet data with accurate astronomical parameters:
+        const planetsData = [
+            // Planets
+            // [name, radius, semiMajorAxis, eccentricity, inclination, orbitalPeriod, color, hasRings, obliquity, isDwarf, info]
+            ["mercury", 0.8, 50, 0.206, 7.0, 88.0, 0x8a8a8a, false, 0.034, false, {
+                name: "Mercury",
+                type: "Planet",
+                semiMajorAxis: "57.9 million km",
+                perihelion: "46.0 million km",
+                aphelion: "69.8 million km",
+                orbitalPeriod: "88.0 days",
+                orbitalVelocity: "47.4 km/s",
+                orbitalEccentricity: "0.206",
+                orbitalInclination: "7.0°",
+                obliquity: "0.034°",
+                description: "The smallest and closest planet to the Sun."
+            }],
+            ["venus", 2.0, 80, 0.007, 3.4, 224.7, 0xe39e1c, false, 177.4, false, {
+                name: "Venus",
+                type: "Planet",
+                semiMajorAxis: "108.2 million km",
+                perihelion: "107.5 million km",
+                aphelion: "108.9 million km",
+                orbitalPeriod: "224.7 days",
+                orbitalVelocity: "35.0 km/s",
+                orbitalEccentricity: "0.007",
+                orbitalInclination: "3.4°",
+                obliquity: "177.4°",
+                description: "The hottest planet with a thick, toxic atmosphere."
+            }],
+            ["earth", 2.1, 110, 0.017, 0.0, 365.3, 0x3366cc, false, 23.44, false, {
+                name: "Earth",
+                type: "Planet",
+                semiMajorAxis: "149.6 million km",
+                perihelion: "147.1 million km",
+                aphelion: "152.1 million km",
+                orbitalPeriod: "365.3 days",
+                orbitalVelocity: "29.8 km/s",
+                orbitalEccentricity: "0.017",
+                orbitalInclination: "0.0°",
+                obliquity: "23.44°",
+                description: "Our home planet, the only known place with life."
+            }],
+            ["mars", 1.1, 150, 0.094, 1.8, 686.98, 0xcc5500, false, 25.19, false, {
+                name: "Mars",
+                type: "Planet",
+                semiMajorAxis: "227.9 million km",
+                perihelion: "206.6 million km",
+                aphelion: "249.2 million km",
+                orbitalPeriod: "686.98 days",
+                orbitalVelocity: "24.1 km/s",
+                orbitalEccentricity: "0.094",
+                orbitalInclination: "1.8°",
+                obliquity: "25.19°",
+                description: "The Red Planet, with the largest volcano in the solar system."
+            }],
+            ["jupiter", 5.0, 250, 0.049, 1.3, 4332.6, 0xd8ca9d, true, 3.13, false, {
+                name: "Jupiter",
+                type: "Planet",
+                hasRings: true,
+                semiMajorAxis: "778.6 million km",
+                perihelion: "740.5 million km",
+                aphelion: "816.6 million km",
+                orbitalPeriod: "4332.6 days (11.9 years)",
+                orbitalVelocity: "13.1 km/s",
+                orbitalEccentricity: "0.049",
+                orbitalInclination: "1.3°",
+                obliquity: "3.13°",
+                description: "The largest planet, a gas giant with a Great Red Spot."
+            }],
+            ["saturn", 4.5, 350, 0.057, 2.5, 10759.2, 0xe3e0c0, true, 26.73, false, {
+                name: "Saturn",
+                type: "Planet",
+                hasRings: true,
+                semiMajorAxis: "1433.5 million km",
+                perihelion: "1352.6 million km",
+                aphelion: "1514.5 million km",
+                orbitalPeriod: "10759.2 days (29.5 years)",
+                orbitalVelocity: "9.7 km/s",
+                orbitalEccentricity: "0.057",
+                orbitalInclination: "2.5°",
+                obliquity: "26.73°",
+                description: "Famous for its spectacular ring system."
+            }],
+            ["uranus", 3.2, 450, 0.046, 0.8, 30688.5, 0xb5e3e3, true, 97.77, false, {
+                name: "Uranus",
+                type: "Planet",
+                hasRings: true,
+                semiMajorAxis: "2872.5 million km",
+                perihelion: "2741.3 million km",
+                aphelion: "3003.6 million km",
+                orbitalPeriod: "30688.5 days (84 years)",
+                orbitalVelocity: "6.8 km/s",
+                orbitalEccentricity: "0.046",
+                orbitalInclination: "0.8°",
+                obliquity: "97.77°",
+                description: "An ice giant that rotates on its side."
+            }],
+            ["neptune", 3.1, 550, 0.010, 1.8, 60195, 0x3366cc, true, 28.32, false, {
+                name: "Neptune",
+                type: "Planet",
+                hasRings: true,
+                semiMajorAxis: "4495.1 million km",
+                perihelion: "4444.5 million km",
+                aphelion: "4545.7 million km",
+                orbitalPeriod: "60195 days (165 years)",
+                orbitalVelocity: "5.4 km/s",
+                orbitalEccentricity: "0.010",
+                orbitalInclination: "1.8°",
+                obliquity: "28.32°",
+                description: "The windiest planet with supersonic winds."
+            }],
+            // Dwarf Planets (scaled for visibility)
+            ["ceres", 2.0, 180, 0.076, 10.6, 1682, 0x999999, false, 4, true, {
+                name: "Ceres",
+                type: "Dwarf Planet",
+                semiMajorAxis: "413.7 million km",
+                perihelion: "381.5 million km",
+                aphelion: "445.9 million km",
+                orbitalPeriod: "1682 days (4.6 years)",
+                orbitalVelocity: "17.9 km/s",
+                orbitalEccentricity: "0.076",
+                orbitalInclination: "10.6°",
+                obliquity: "4°",
+                description: "The largest object in the asteroid belt between Mars and Jupiter."
+            }],
+            ["pluto", 2.2, 900, 0.249, 17.2, 90560, 0xcccccc, false, 122.5, true, {
+                name: "Pluto",
+                type: "Dwarf Planet",
+                semiMajorAxis: "5906.4 million km",
+                perihelion: "4436.8 million km",
+                aphelion: "7375.9 million km",
+                orbitalPeriod: "90560 days (248 years)",
+                orbitalVelocity: "4.7 km/s",
+                orbitalEccentricity: "0.249",
+                orbitalInclination: "17.2°",
+                obliquity: "122.5°",
+                description: "The largest known dwarf planet in the Solar System."
+            }],
+            ["haumea", 1.8, 1200, 0.196, 28.2, 103760, 0xaaaaaa, false, 90, true, {
+                name: "Haumea",
+                type: "Dwarf Planet",
+                semiMajorAxis: "6443.6 million km",
+                perihelion: "5183.0 million km",
+                aphelion: "7704.2 million km",
+                orbitalPeriod: "103760 days (284 years)",
+                orbitalVelocity: "4.5 km/s",
+                orbitalEccentricity: "0.196",
+                orbitalInclination: "28.2°",
+                obliquity: "90°",
+                description: "An elongated dwarf planet with a rapid rotation and two moons."
+            }],
+            ["makemake", 1.8, 1400, 0.156, 29.0, 112080, 0x9999cc, false, 0, true, {
+                name: "Makemake",
+                type: "Dwarf Planet",
+                semiMajorAxis: "6845.7 million km",
+                perihelion: "5672.4 million km",
+                aphelion: "8019.0 million km",
+                orbitalPeriod: "112080 days (307 years)",
+                orbitalVelocity: "4.4 km/s",
+                orbitalEccentricity: "0.156",
+                orbitalInclination: "29.0°",
+                description: "A reddish dwarf planet with a bright surface and no known moons."
+            }],
+            ["eris", 2.0, 1600, 0.436, 44.0, 203940, 0xaaaaaa, false, 0, true, {
+                name: "Eris",
+                type: "Dwarf Planet",
+                semiMajorAxis: "10125.2 million km",
+                perihelion: "5728.4 million km",
+                aphelion: "14522.0 million km",
+                orbitalPeriod: "203940 days (558 years)",
+                orbitalVelocity: "3.4 km/s",
+                orbitalEccentricity: "0.436",
+                orbitalInclination: "44.0°",
+                description: "The most massive known dwarf planet, slightly more massive than Pluto."
+            }]
+        ];
+
+        // Create planets and orbits
+        const planets = [];
+
+        planetsData.forEach(data => {
+            const [name, radius, semiMajorAxis, eccentricity, inclination, orbitalPeriod, color, hasRings, obliquity, isDwarf, info] = data;
+            
+            // Create orbit path with proper inclination
+            createOrbit(semiMajorAxis, eccentricity, inclination, isDwarf);
+            
+            // Create a group for the planet to handle rotations correctly
+            const planetGroup = new THREE.Group();
+            
+            // Create planet
+            const geometry = new THREE.SphereGeometry(radius, 32, 32);
+            const material = new THREE.MeshPhongMaterial({ 
+                color: color,
+                specular: 0x111111,
+                shininess: 30,
+                emissive: 0x000000,
+                emissiveIntensity: 0.1
+            });
+            const planet = new THREE.Mesh(geometry, material);
+            
+            // Add invisible larger sphere for easier clicking
+            const clickAreaGeometry = new THREE.SphereGeometry(radius * 3, 16, 16);
+            const clickAreaMaterial = new THREE.MeshBasicMaterial({ 
+                color: 0x000000,
+                transparent: true, 
+                opacity: 0 
+            });
+            const clickArea = new THREE.Mesh(clickAreaGeometry, clickAreaMaterial);
+            planet.add(clickArea);
+            
+            // Position planet at perihelion within its group
+            const perihelion = semiMajorAxis * (1 - eccentricity);
+            planet.position.x = perihelion;
+            
+            // Add planet to its group
+            planetGroup.add(planet);
+            
+            // Add rings for planets with rings
+            if (hasRings) {
+                let ringColor, innerRadius, outerRadius;
+                
+                // Customize ring properties based on planet
+                switch(name) {
+                    case "saturn":
+                        ringColor = 0xe3e0c0;
+                        innerRadius = radius * 1.5;
+                        outerRadius = radius * 4.0;
+                        break;
+                    case "jupiter":
+                        ringColor = 0xc0c0c0;
+                        innerRadius = radius * 1.3;
+                        outerRadius = radius * 2.0;
+                        break;
+                    case "uranus":
+                        ringColor = 0x87ceeb;
+                        innerRadius = radius * 1.4;
+                        outerRadius = radius * 2.5;
+                        break;
+                    case "neptune":
+                        ringColor = 0x4169e1;
+                        innerRadius = radius * 1.3;
+                        outerRadius = radius * 2.2;
+                        break;
+                    default:
+                        ringColor = 0xffffff;
+                        innerRadius = radius * 1.3;
+                        outerRadius = radius * 2.5;
+                }
+                
+                const ringGeometry = new THREE.RingGeometry(innerRadius, outerRadius, 64);
+                const ringMaterial = new THREE.MeshBasicMaterial({
+                    color: ringColor,
+                    side: THREE.DoubleSide,
+                    transparent: true,
+                    opacity: 0.7
+                });
+                const ring = new THREE.Mesh(ringGeometry, ringMaterial);
+                ring.rotation.x = Math.PI / 2;
+                
+                // Create a separate group for the rings to rotate independently
+                const ringGroup = new THREE.Group();
+                ringGroup.add(ring);
+                planet.add(ringGroup);
+            }
+            
+            // For dwarf planets, add a visual indicator
+            if (isDwarf) {
+                const indicatorGeometry = new THREE.RingGeometry(radius * 1.5, radius * 1.7, 32);
+                const indicatorMaterial = new THREE.MeshBasicMaterial({
+                    color: 0xffffff,
+                    side: THREE.DoubleSide,
+                    transparent: true,
+                    opacity: 0.7
+                });
+                const indicator = new THREE.Mesh(indicatorGeometry, indicatorMaterial);
+                indicator.rotation.x = Math.PI / 2;
+                planet.add(indicator);
+            }
+            
+            // Apply orbital inclination to the group
+            planetGroup.rotation.x = inclination * Math.PI / 180;
+            
+            // Add to scene and array
+            scene.add(planetGroup);
+            
+            planets.push({
+                group: planetGroup,
+                mesh: planet,
+                semiMajorAxis: semiMajorAxis,
+                eccentricity: eccentricity,
+                inclination: inclination,
+                orbitalPeriod: orbitalPeriod,
+                speed: 0.02 / Math.sqrt(semiMajorAxis),
+                angle: Math.random() * Math.PI * 2,
+                name: name,
+                info: info,
+                isDwarf: isDwarf
+            });
+        });
+
+        // Add ambient light
+        const ambientLight = new THREE.AmbientLight(0x333333);
+        scene.add(ambientLight);
+
+        // Add point light (sun light)
+        const sunLight = new THREE.PointLight(0xffffff, 1.5, 5000);
+        sunLight.position.set(0, 0, 0);
+        scene.add(sunLight);
+        
+        // Add additional directional light for better shading
+        const directionalLight = new THREE.DirectionalLight(0xffffff, 0.5);
+        directionalLight.position.set(500, 500, 500);
+        scene.add(directionalLight);
+        
+        // Create Proxima Centauri system
+        const createProximaCentauriSystem = () => {
+            try {
+                // Position the system at a distance from our solar system
+                const systemPosition = new THREE.Vector3(2000, 0, 0);
+                
+                // Create Proxima Centauri star
+                const proximaGeometry = new THREE.SphereGeometry(10, 32, 32);
+                const proximaMaterial = new THREE.MeshBasicMaterial({ 
+                    color: 0xff6666,
+                    emissive: 0xff6666,
+                    emissiveIntensity: 0.5
+                });
+                const proximaStar = new THREE.Mesh(proximaGeometry, proximaMaterial);
+                
+                // Add a glow effect
+                const proximaGlowGeometry = new THREE.SphereGeometry(12, 32, 32);
+                const proximaGlowMaterial = new THREE.MeshBasicMaterial({
+                    color: 0xff9999,
+                    transparent: true,
+                    opacity: 0.3
+                });
+                const proximaGlow = new THREE.Mesh(proximaGlowGeometry, proximaGlowMaterial);
+                
+                // Add a corona effect
+                const proximaCoronaGeometry = new THREE.SphereGeometry(15, 32, 32);
+                const proximaCoronaMaterial = new THREE.MeshBasicMaterial({
+                    color: 0xff6666,
+                    transparent: true,
+                    opacity: 0.1
+                });
+                const proximaCorona = new THREE.Mesh(proximaCoronaGeometry, proximaCoronaMaterial);
+                
+                const proximaGroup = new THREE.Group();
+                proximaGroup.add(proximaStar);
+                proximaGroup.add(proximaGlow);
+                proximaGroup.add(proximaCorona);
+                proximaGroup.position.copy(systemPosition);
+                scene.add(proximaGroup);
+                
+                // Create Proxima Centauri b (exoplanet)
+                const proximaPlanetGeometry = new THREE.SphereGeometry(1.5, 32, 32);
+                const proximaPlanetMaterial = new THREE.MeshPhongMaterial({ color: 0x996633 });
+                const proximaPlanet = new THREE.Mesh(proximaPlanetGeometry, proximaPlanetMaterial);
+                
+                // Add invisible larger sphere for easier clicking
+                const proximaClickAreaGeometry = new THREE.SphereGeometry(3, 16, 16);
+                const proximaClickAreaMaterial = new THREE.MeshBasicMaterial({ 
+                    color: 0x000000,
+                    transparent: true, 
+                    opacity: 0 
+                });
+                const proximaClickArea = new THREE.Mesh(proximaClickAreaGeometry, proximaClickAreaMaterial);
+                proximaPlanet.add(proximaClickArea);
+                
+                // Add to a group for orbiting
+                const planetOrbitGroup = new THREE.Group();
+                planetOrbitGroup.add(proximaPlanet);
+                planetOrbitGroup.position.copy(systemPosition);
+                scene.add(planetOrbitGroup);
+                
+                // Create orbit path
+                const orbitPoints = [];
+                const orbitRadius = 30;
+                const segments = 64;
+                
+                for (let i = 0; i <= segments; i++) {
+                    const theta = (i / segments) * Math.PI * 2;
+                    const x = systemPosition.x + orbitRadius * Math.cos(theta);
+                    const z = systemPosition.z + orbitRadius * Math.sin(theta);
+                    orbitPoints.push(new THREE.Vector3(x, systemPosition.y, z));
+                }
+                
+                const orbitGeometry = new THREE.BufferGeometry().setFromPoints(orbitPoints);
+                const orbitMaterial = new THREE.LineBasicMaterial({ 
+                    color: 0xffffff,
+                    transparent: true,
+                    opacity: 0.3
+                });
+                
+                const orbit = new THREE.Line(orbitGeometry, orbitMaterial);
+                scene.add(orbit);
+                
+                // Store references for animation
+                return {
+                    star: proximaGroup,
+                    planet: proximaPlanet,
+                    planetOrbitGroup: planetOrbitGroup,
+                    orbitRadius: orbitRadius,
+                    angle: 0
+                };
+            } catch (error) {
+                console.error("Error creating Proxima Centauri system:", error);
+                return null;
+            }
+        };
+        
+        // Create nearby stars based on the provided data
+        const createNearbyStars = () => {
+            const nearbyStarsData = [
+                // [name, type, distance, ra_h, ra_m, ra_s, dec_d, dec_m, dec_s, mass, color, radius]
+                ["Proxima Centauri", "M5.5V red dwarf", 4.2465, 14, 29, 43, -62, 40, 46, 0.122, 0xff6666, 10],
+                // Alpha Centauri A and B will be handled as a binary system
+                ["Barnard's Star", "M4V red dwarf", 5.963, 17, 57, 48, 4, 41, 36, 0.144, 0xff6666, 8],
+                ["Luhman 16 A", "L7.5 brown dwarf", 6.503, 10, 49, 19, -53, 19, 6, 0.04, 0x996600, 5],
+                ["Luhman 16 B", "T0.5 brown dwarf", 6.503, 10, 49, 30, -53, 25, 0, 0.03, 0x804000, 5],
+                ["WISE 0855−0714", "Y brown dwarf", 7.430, 8, 55, 11, -7, 14, 42, 0.005, 0x663300, 3],
+                ["Wolf 359", "M6V red dwarf", 7.856, 10, 56, 29, 7, 0, 53, 0.090, 0xff6666, 6],
+                ["Lalande 21185", "M2V red dwarf", 8.304, 11, 3, 20, 35, 58, 12, 0.390, 0xff9999, 10],
+                ["Sirius A", "A1V white main-sequence", 8.659, 6, 45, 9, -16, 42, 58, 2.063, 0xffffff, 20],
+                ["Sirius B", "DA2 white dwarf", 8.659, 6, 45, 9, -16, 42, 58, 1.018, 0xccccff, 5],
+                ["Ross 154", "M3.5V red dwarf", 9.610, 18, 48, 48, -24, 13, 57, 0.170, 0xff6666, 7],
+                ["Ross 248", "M5.5V red dwarf", 10.220, 23, 42, 51, 44, 11, 1, 0.136, 0xff6666, 6],
+                ["Epsilon Eridani", "K2V orange dwarf", 10.480, 3, 32, 56, -9, 27, 29, 0.810, 0xffcc99, 12],
+                ["Procyon A", "F5IV-V yellow-white dwarf", 11.410, 7, 39, 18, 5, 13, 30, 1.499, 0xffffcc, 15],
+                ["Procyon B", "DA white dwarf", 11.410, 7, 39, 18, 5, 13, 30, 0.590, 0xccccff, 4],
+                ["61 Cygni A", "K5V orange dwarf", 11.410, 21, 5, 39, 38, 44, 31, 0.700, 0xffcc99, 10],
+                ["61 Cygni B", "K7V orange dwarf", 11.410, 21, 5, 39, 38, 44, 31, 0.630, 0xffcc99, 9]
+            ];
+            
+            const stars = [];
+            
+            // Create Alpha Centauri binary system
+            // Use the coordinates of Alpha Centauri A as the center of the binary system
+            const alphaCenARAH = 14, alphaCenARAM = 39, alphaCenARAS = 36;
+            const alphaCenADecD = -60, alphaCenADecM = 50, alphaCenADecS = 2;
+            const alphaCenDistance = 4.367;
+            
+            // Convert RA and Dec to 3D Cartesian coordinates for the system center
+            const alphaCenRA = (alphaCenARAH + alphaCenARAM/60 + alphaCenARAS/3600) * 15 * Math.PI/180;
+            const alphaCenDec = (alphaCenADecD + alphaCenADecM/60 + alphaCenADecS/3600) * Math.PI/180;
+            const alphaCenDistanceScaled = alphaCenDistance * 1000;
+            const alphaCenX = alphaCenDistanceScaled * Math.cos(alphaCenDec) * Math.cos(alphaCenRA);
+            const alphaCenY = alphaCenDistanceScaled * Math.sin(alphaCenDec);
+            const alphaCenZ = alphaCenDistanceScaled * Math.cos(alphaCenDec) * Math.sin(alphaCenRA);
+            
+            // Create a group for the Alpha Centauri binary system
+            const alphaCenGroup = new THREE.Group();
+            alphaCenGroup.position.set(alphaCenX, alphaCenY, alphaCenZ);
+            scene.add(alphaCenGroup);
+            
+            // Create Alpha Centauri A
+            const alphaCenAGeometry = new THREE.SphereGeometry(15, 32, 32);
+            const alphaCenAMaterial = new THREE.MeshBasicMaterial({ 
+                color: 0xffffcc,
+                emissive: 0xffffcc,
+                emissiveIntensity: 0.5
+            });
+            const alphaCenA = new THREE.Mesh(alphaCenAGeometry, alphaCenAMaterial);
+            
+            // Add glow effect for Alpha Centauri A
+            const alphaCenAGlowGeometry = new THREE.SphereGeometry(22.5, 32, 32);
+            const alphaCenAGlowMaterial = new THREE.MeshBasicMaterial({
+                color: 0xffffcc,
+                transparent: true,
+                opacity: 0.3
+            });
+            const alphaCenAGlow = new THREE.Mesh(alphaCenAGlowGeometry, alphaCenAGlowMaterial);
+            alphaCenA.add(alphaCenAGlow);
+            
+            // Add corona effect for Alpha Centauri A
+            const alphaCenACoronaGeometry = new THREE.SphereGeometry(30, 32, 32);
+            const alphaCenACoronaMaterial = new THREE.MeshBasicMaterial({
+                color: 0xffffcc,
+                transparent: true,
+                opacity: 0.1
+            });
+            const alphaCenACorona = new THREE.Mesh(alphaCenACoronaGeometry, alphaCenACoronaMaterial);
+            alphaCenA.add(alphaCenACorona);
+            
+            // Position Alpha Centauri A at one side of the orbit
+            alphaCenA.position.x = -50; // Start at one side of the orbit
+            alphaCenGroup.add(alphaCenA);
+            
+            // Create Alpha Centauri B
+            const alphaCenBGeometry = new THREE.SphereGeometry(14, 32, 32);
+            const alphaCenBMaterial = new THREE.MeshBasicMaterial({ 
+                color: 0xffcc99,
+                emissive: 0xffcc99,
+                emissiveIntensity: 0.5
+            });
+            const alphaCenB = new THREE.Mesh(alphaCenBGeometry, alphaCenBMaterial);
+            
+            // Add glow effect for Alpha Centauri B
+            const alphaCenBGlowGeometry = new THREE.SphereGeometry(21, 32, 32);
+            const alphaCenBGlowMaterial = new THREE.MeshBasicMaterial({
+                color: 0xffcc99,
+                transparent: true,
+                opacity: 0.3
+            });
+            const alphaCenBGlow = new THREE.Mesh(alphaCenBGlowGeometry, alphaCenBGlowMaterial);
+            alphaCenB.add(alphaCenBGlow);
+            
+            // Add corona effect for Alpha Centauri B
+            const alphaCenBCoronaGeometry = new THREE.SphereGeometry(28, 32, 32);
+            const alphaCenBCoronaMaterial = new THREE.MeshBasicMaterial({
+                color: 0xffcc99,
+                transparent: true,
+                opacity: 0.1
+            });
+            const alphaCenBCorona = new THREE.Mesh(alphaCenBCoronaGeometry, alphaCenBCoronaMaterial);
+            alphaCenB.add(alphaCenBCorona);
+            
+            // Position Alpha Centauri B at the opposite side
+            alphaCenB.position.x = 50; // Start at the opposite side
+            alphaCenGroup.add(alphaCenB);
+            
+            // Store references for Alpha Centauri system
+            const alphaCenSystem = {
+                group: alphaCenGroup,
+                starA: alphaCenA,
+                starB: alphaCenB,
+                semiMajorAxis: 100, // Distance between the two stars
+                period: 79.8, // Orbital period in years
+                eccentricity: 0.52,
+                angle: 0, // Current orbital angle
+                speed: 0.005 // Orbital speed (increased for better visualization)
+            };
+            
+            // Add other nearby stars
+            // Keep track of binary systems we've already processed
+            const processedBinaries = new Set();
+            
+            nearbyStarsData.forEach(starData => {
+                const [name, type, distanceLy, ra_h, ra_m, ra_s, dec_d, dec_m, dec_s, mass, color, radius] = starData;
+                
+                // Skip Proxima Centauri as it's handled separately
+                if (name === "Proxima Centauri") return;
+                
+                // Handle binary star systems
+                if (name.includes(" A") || name.includes(" B")) {
+                    // Get the base name (without A/B)
+                    const baseName = name.includes(" A") ? name.replace(" A", "") : name.replace(" B", "");
+                    
+                    // Skip if we've already processed this binary system
+                    if (processedBinaries.has(baseName)) return;
+                    
+                    // Mark this binary system as processed
+                    processedBinaries.add(baseName);
+                    
+                    // Find both components
+                    const componentA = nearbyStarsData.find(s => s[0] === baseName + " A");
+                    const componentB = nearbyStarsData.find(s => s[0] === baseName + " B");
+                    
+                    // Convert RA and Dec to 3D Cartesian coordinates using component A's data
+                    // (both components should have the same position)
+                    const ra_hA = componentA ? componentA[3] : ra_h;
+                    const ra_mA = componentA ? componentA[4] : ra_m;
+                    const ra_sA = componentA ? componentA[5] : ra_s;
+                    const dec_dA = componentA ? componentA[6] : dec_d;
+                    const dec_mA = componentA ? componentA[7] : dec_m;
+                    const dec_sA = componentA ? componentA[8] : dec_s;
+                    
+                    // RA (right ascension) in hours, minutes, seconds
+                    const ra = (ra_hA + ra_mA/60 + ra_sA/3600) * 15 * Math.PI/180; // Convert to radians
+                    // Dec (declination) in degrees, minutes, seconds
+                    const dec = (dec_dA + dec_mA/60 + dec_sA/3600) * Math.PI/180; // Convert to radians
+                    
+                    // Convert spherical coordinates to Cartesian
+                    // Scale distance for visualization (1 light-year = 1000 units)
+                    const distance = distanceLy * 1000;
+                    const x = distance * Math.cos(dec) * Math.cos(ra);
+                    const y = distance * Math.sin(dec);
+                    const z = distance * Math.cos(dec) * Math.sin(ra);
+                    
+                    // Create a group for the binary system
+                    const binaryGroup = new THREE.Group();
+                    binaryGroup.position.set(x, y, z);
+                    scene.add(binaryGroup);
+                    
+                    // Create orbits for the binary system
+                    const orbitPoints = [];
+                    const orbitRadius = 30;
+                    const segments = 64;
+                    
+                    for (let i = 0; i <= segments; i++) {
+                        const theta = (i / segments) * Math.PI * 2;
+                        orbitPoints.push(new THREE.Vector3(orbitRadius * Math.cos(theta), 0, orbitRadius * Math.sin(theta)));
+                    }
+                    
+                    const orbitGeometry = new THREE.BufferGeometry().setFromPoints(orbitPoints);
+                    const orbitMaterial = new THREE.LineBasicMaterial({ 
+                        color: 0xffffff,
+                        transparent: true,
+                        opacity: 0.2
+                    });
+                    
+                    const orbit = new THREE.Line(orbitGeometry, orbitMaterial);
+                    binaryGroup.add(orbit);
+                    
+                    // Create component A if it exists
+                    if (componentA) {
+                        const [nameA, typeA, distanceLyA, ra_hA, ra_mA, ra_sA, dec_dA, dec_mA, dec_sA, massA, colorA, radiusA] = componentA;
+                        const starAGeometry = new THREE.SphereGeometry(radiusA, 32, 32);
+                        const starAMaterial = new THREE.MeshBasicMaterial({ 
+                            color: colorA,
+                            emissive: colorA,
+                            emissiveIntensity: 0.5
+                        });
+                        const starA = new THREE.Mesh(starAGeometry, starAMaterial);
+                        
+                        // Add glow effect for component A
+                        if (massA > 0.5) {
+                            const glowAGeometry = new THREE.SphereGeometry(radiusA * 1.8, 32, 32);
+                            const glowAMaterial = new THREE.MeshBasicMaterial({
+                                color: colorA,
+                                transparent: true,
+                                opacity: 0.2
+                            });
+                            const glowA = new THREE.Mesh(glowAGeometry, glowAMaterial);
+                            starA.add(glowA);
+                        }
+                        
+                        // Position component A on the orbit
+                        starA.position.set(-orbitRadius, 0, 0);
+                        binaryGroup.add(starA);
+                        
+                        // Store reference for component A
+                        stars.push({
+                            mesh: starA,
+                            name: nameA,
+                            type: typeA,
+                            distance: distanceLyA,
+                            mass: massA,
+                            info: {
+                                name: nameA,
+                                type: typeA,
+                                distance: distanceLyA + " light-years",
+                                mass: massA + " Solar Masses",
+                                description: "Component A of the " + baseName + " binary system"
+                            },
+                            isBinaryComponent: true,
+                            binaryGroup: binaryGroup
+                        });
+                    }
+                    
+                    // Create component B if it exists
+                    if (componentB) {
+                        const [nameB, typeB, distanceLyB, ra_hB, ra_mB, ra_sB, dec_dB, dec_mB, dec_sB, massB, colorB, radiusB] = componentB;
+                        const starBGeometry = new THREE.SphereGeometry(radiusB, 32, 32);
+                        const starBMaterial = new THREE.MeshBasicMaterial({ 
+                            color: colorB,
+                            emissive: colorB,
+                            emissiveIntensity: 0.5
+                        });
+                        const starB = new THREE.Mesh(starBGeometry, starBMaterial);
+                        
+                        // Add glow effect for component B
+                        if (massB > 0.5) {
+                            const glowBGeometry = new THREE.SphereGeometry(radiusB * 1.8, 32, 32);
+                            const glowBMaterial = new THREE.MeshBasicMaterial({
+                                color: colorB,
+                                transparent: true,
+                                opacity: 0.2
+                            });
+                            const glowB = new THREE.Mesh(glowBGeometry, glowBMaterial);
+                            starB.add(glowB);
+                        }
+                        
+                        // Position component B on the orbit (opposite to A)
+                        starB.position.set(orbitRadius, 0, 0);
+                        binaryGroup.add(starB);
+                        
+                        // Store reference for component B
+                        stars.push({
+                            mesh: starB,
+                            name: nameB,
+                            type: typeB,
+                            distance: distanceLyB,
+                            mass: massB,
+                            info: {
+                                name: nameB,
+                                type: typeB,
+                                distance: distanceLyB + " light-years",
+                                mass: massB + " Solar Masses",
+                                description: "Component B of the " + baseName + " binary system"
+                            },
+                            isBinaryComponent: true,
+                            binaryGroup: binaryGroup
+                        });
+                    }
+                } else {
+                    // Create single star
+                    // Convert RA and Dec to 3D Cartesian coordinates
+                    // RA (right ascension) in hours, minutes, seconds
+                    const ra = (ra_h + ra_m/60 + ra_s/3600) * 15 * Math.PI/180; // Convert to radians
+                    // Dec (declination) in degrees, minutes, seconds
+                    const dec = (dec_d + dec_m/60 + dec_s/3600) * Math.PI/180; // Convert to radians
+                    
+                    // Convert spherical coordinates to Cartesian
+                    // Scale distance for visualization (1 light-year = 1000 units)
+                    const distance = distanceLy * 1000;
+                    const x = distance * Math.cos(dec) * Math.cos(ra);
+                    const y = distance * Math.sin(dec);
+                    const z = distance * Math.cos(dec) * Math.sin(ra);
+                    
+                    // Create star
+                    const starGeometry = new THREE.SphereGeometry(radius, 32, 32);
+                    const starMaterial = new THREE.MeshBasicMaterial({ 
+                        color: color,
+                        emissive: color,
+                        emissiveIntensity: 0.5
+                    });
+                    const star = new THREE.Mesh(starGeometry, starMaterial);
+                    
+                    // Add a glow effect for brighter stars
+                    if (mass > 0.5) {
+                        const glowGeometry = new THREE.SphereGeometry(radius * 1.8, 32, 32);
+                        const glowMaterial = new THREE.MeshBasicMaterial({
+                            color: color,
+                            transparent: true,
+                            opacity: 0.2
+                        });
+                        const glow = new THREE.Mesh(glowGeometry, glowMaterial);
+                        star.add(glow);
+                    }
+                    
+                    // Position the star
+                    star.position.set(x, y, z);
+                    
+                    // Add to scene
+                    scene.add(star);
+                    
+                    // Store reference for interaction
+                    stars.push({
+                        mesh: star,
+                        name: name,
+                        type: type,
+                        distance: distanceLy,
+                        mass: mass,
+                        info: {
+                            name: name,
+                            type: type,
+                            distance: distanceLy + " light-years",
+                            mass: mass + " Solar Masses",
+                            description: "Nearby star system"
+                        }
+                    });
+                }
+            });
+            
+            // Add Alpha Centauri A and B to the stars array for interaction
+            stars.push({
+                mesh: alphaCenA,
+                name: "Alpha Centauri A",
+                type: "G2V yellow dwarf",
+                distance: alphaCenDistance,
+                mass: 1.079,
+                info: {
+                    name: "Alpha Centauri A",
+                    type: "G2V yellow dwarf",
+                    distance: alphaCenDistance + " light-years",
+                    mass: "1.079 Solar Masses",
+                    description: "Primary star in the Alpha Centauri binary system"
+                },
+                isBinaryComponent: true,
+                binarySystem: alphaCenSystem
+            });
+            
+            stars.push({
+                mesh: alphaCenB,
+                name: "Alpha Centauri B",
+                type: "K1V orange dwarf",
+                distance: alphaCenDistance,
+                mass: 0.909,
+                info: {
+                    name: "Alpha Centauri B",
+                    type: "K1V orange dwarf",
+                    distance: alphaCenDistance + " light-years",
+                    mass: "0.909 Solar Masses",
+                    description: "Secondary star in the Alpha Centauri binary system"
+                },
+                isBinaryComponent: true,
+                binarySystem: alphaCenSystem
+            });
+            
+            // Return both the stars array and the Alpha Centauri system
+            return {
+                stars: stars,
+                alphaCenSystem: alphaCenSystem
+            };
+        };
+        
+        // Create Proxima Centauri system
+        const proximaSystem = createProximaCentauriSystem();
+        
+        // Create nearby stars
+        const nearbyStarsResult = createNearbyStars();
+        const nearbyStars = nearbyStarsResult.stars;
+        const alphaCenSystem = nearbyStarsResult.alphaCenSystem;
+        
+        // Position camera
+        camera.position.set(0, 200, 600);
+
+        // Handle window resize
+        window.addEventListener('resize', () => {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        });
+
+        // Raycasting for planet selection
+        const raycaster = new THREE.Raycaster();
+        const mouse = new THREE.Vector2();
+        const planetInfo = document.getElementById('planetInfo');
+
+        // Convert screen position to normalized device coordinates (-1 to +1)
+        const onMouseMove = (event) => {
+            mouse.x = (event.clientX / window.innerWidth) * 2 - 1;
+            mouse.y = -(event.clientY / window.innerHeight) * 2 + 1;
+        };
+
+        // Handle mouse clicks
+        const onClick = () => {
+            // Update the picking ray with the camera and mouse position
+            raycaster.setFromCamera(mouse, camera);
+            
+            // Calculate objects intersecting the picking ray
+            const intersects = raycaster.intersectObjects(scene.children, true);
+            
+            // Check if we clicked on a planet
+            for (let i = 0; i < intersects.length; i++) {
+                let object = intersects[i].object;
+                
+                // Check if the object is a planet or its click area
+                const planet = planets.find(p => 
+                    p.mesh === object || 
+                    p.mesh.children.includes(object) || 
+                    p.group.children.includes(object)
+                );
+                
+                if (planet) {
+                    // Set flag to indicate we're clicking on an object
+                    isClickingObject = true;
+                    // Start following this planet
+                    startFollowing(planet);
+                    // Show planet info
+                    showPlanetInfo(planet.info, intersects[i].point);
+                    break;
+                }
+                
+                // Check if we clicked on the sun
+                if (intersects[i].object === sun || intersects[i].object === sunGlow) {
+                    // Set flag to indicate we're clicking on an object
+                    isClickingObject = true;
+                    startFollowing({ mesh: sun, name: "Sun", info: {
+                        name: "Sun",
+                        type: "Star",
+                        mass: "1.989 × 10³⁰ kg",
+                        diameter: "1.3927 million km",
+                        description: "The star at the center of our Solar System."
+                    }});
+                    showPlanetInfo({
+                        name: "Sun",
+                        type: "Star",
+                        mass: "1.989 × 10³⁰ kg",
+                        diameter: "1.3927 million km",
+                        description: "The star at the center of our Solar System."
+                    }, intersects[i].point);
+                    break;
+                }
+                
+                // Check if we clicked on Proxima Centauri
+                if (proximaSystem && (intersects[i].object === proximaSystem.star.children[0] || 
+                    intersects[i].object === proximaSystem.star.children[1])) {
+                    // Set flag to indicate we're clicking on an object
+                    isClickingObject = true;
+                    startFollowing({ 
+                        mesh: proximaSystem.star, 
+                        name: "Proxima Centauri", 
+                        info: {
+                            name: "Proxima Centauri",
+                            type: "Red Dwarf Star",
+                            distance: "4.24 light-years",
+                            mass: "0.122 Solar Masses",
+                            radius: "0.154 Solar Radii",
+                            description: "The closest known star to the Sun and host to the exoplanet Proxima Centauri b."
+                        }
+                    });
+                    showPlanetInfo({
+                        name: "Proxima Centauri",
+                        type: "Red Dwarf Star",
+                        distance: "4.24 light-years",
+                        mass: "0.122 Solar Masses",
+                        radius: "0.154 Solar Radii",
+                        description: "The closest known star to the Sun and host to the exoplanet Proxima Centauri b."
+                    }, intersects[i].point);
+                    break;
+                }
+                
+                // Check if we clicked on Proxima Centauri b
+                if (proximaSystem && intersects[i].object === proximaSystem.planet) {
+                    // Set flag to indicate we're clicking on an object
+                    isClickingObject = true;
+                    startFollowing({ 
+                        mesh: proximaSystem.planet, 
+                        name: "Proxima Centauri b", 
+                        info: {
+                            name: "Proxima Centauri b",
+                            type: "Exoplanet",
+                            distance: "4.24 light-years",
+                            mass: "1.17 Earth masses",
+                            orbitalPeriod: "11.2 Earth days",
+                            description: "An exoplanet orbiting in the habitable zone of Proxima Centauri."
+                        }
+                    });
+                    showPlanetInfo({
+                        name: "Proxima Centauri b",
+                        type: "Exoplanet",
+                        distance: "4.24 light-years",
+                        mass: "1.17 Earth masses",
+                        orbitalPeriod: "11.2 Earth days",
+                        description: "An exoplanet orbiting in the habitable zone of Proxima Centauri."
+                    }, intersects[i].point);
+                    break;
+                }
+                
+                // Check if we clicked on a nearby star
+                let nearbyStar = nearbyStars.find(s => 
+                    s.mesh === object || 
+                    (s.mesh.children && s.mesh.children.length > 0 && s.mesh.children.includes(object)) ||
+                    s.mesh === object.parent
+                );
+                
+                // If we didn't find a direct match, check if we clicked on a binary system group
+                if (!nearbyStar) {
+                    nearbyStar = nearbyStars.find(s => 
+                        s.isBinaryComponent && s.binaryGroup && (
+                            s.binaryGroup === object || 
+                            s.binaryGroup.children.includes(object)
+                        )
+                    );
+                }
+                
+                if (nearbyStar) {
+                    // Set flag to indicate we're clicking on an object
+                    isClickingObject = true;
+                    startFollowing({ 
+                        mesh: nearbyStar.mesh, 
+                        name: nearbyStar.name, 
+                        info: nearbyStar.info
+                    });
+                    showPlanetInfo(nearbyStar.info, intersects[i].point);
+                    break;
+                }
+            }
+            
+            // If we didn't click on anything, hide the info box
+            if (intersects.length === 0) {
+                planetInfo.style.display = 'none';
+            }
+        };
+
+        // Show planet information
+        const showPlanetInfo = (info, position) => {
+            // Convert 3D position to 2D screen position
+            const vector = position.clone().project(camera);
+            const x = (vector.x * 0.5 + 0.5) * window.innerWidth;
+            const y = -(vector.y * 0.5 - 0.5) * window.innerHeight;
+            
+            // Update info box content
+            let infoHTML = `<h3>${info.name} (${info.type})</h3>`;
+            
+            if (info.semiMajorAxis) infoHTML += `<p>Semi-Major Axis: ${info.semiMajorAxis}</p>`;
+            if (info.perihelion) infoHTML += `<p>Perihelion: ${info.perihelion}</p>`;
+            if (info.aphelion) infoHTML += `<p>Aphelion: ${info.aphelion}</p>`;
+            if (info.orbitalPeriod) infoHTML += `<p>Orbital Period: ${info.orbitalPeriod}</p>`;
+            if (info.orbitalVelocity) infoHTML += `<p>Orbital Velocity: ${info.orbitalVelocity}</p>`;
+            if (info.orbitalEccentricity) infoHTML += `<p>Orbital Eccentricity: ${info.orbitalEccentricity}</p>`;
+            if (info.orbitalInclination) infoHTML += `<p>Orbital Inclination: ${info.orbitalInclination}</p>`;
+            if (info.obliquity) infoHTML += `<p>Axial Tilt: ${info.obliquity}°</p>`;
+            if (info.mass) infoHTML += `<p>Mass: ${info.mass}</p>`;
+            if (info.diameter) infoHTML += `<p>Diameter: ${info.diameter}</p>`;
+            if (info.description) infoHTML += `<p>${info.description}</p>`;
+            
+            planetInfo.innerHTML = infoHTML;
+            
+            // Position info box near the planet
+            planetInfo.style.left = `${x + 10}px`;
+            planetInfo.style.top = `${y + 10}px`;
+            planetInfo.style.display = 'block';
+            
+            // Hide info box after 5 seconds
+            setTimeout(() => {
+                planetInfo.style.display = 'none';
+            }, 5000);
+        };
+
+        // Start following a celestial body
+        const startFollowing = (target) => {
+            followingTarget = target;
+            userHasMovedCamera = false;
+            
+            // Update follow indicator
+            document.getElementById('followTarget').textContent = target.info.name;
+            document.getElementById('followIndicator').style.display = 'block';
+        };
+
+        // Stop following a celestial body
+        const stopFollowing = () => {
+            followingTarget = null;
+            document.getElementById('followIndicator').style.display = 'none';
+        };
+
+        // Create navigation list
+        const celestialList = document.getElementById('celestialList');
+        
+        // Add Sun to the list
+        const sunItem = document.createElement('li');
+        const sunButton = document.createElement('button');
+        sunButton.textContent = "Sun";
+        sunButton.addEventListener('click', () => {
+            startFollowing({ mesh: sun, name: "Sun", info: {
+                name: "Sun",
+                type: "Star",
+                mass: "1.989 × 10³⁰ kg",
+                diameter: "1.3927 million km",
+                description: "The star at the center of our Solar System."
+            }});
+        });
+        sunItem.appendChild(sunButton);
+        celestialList.appendChild(sunItem);
+        
+        // Add planets and dwarf planets to the list
+        planets.forEach(planet => {
+            const item = document.createElement('li');
+            const button = document.createElement('button');
+            button.textContent = planet.info.name;
+            button.addEventListener('click', () => {
+                startFollowing(planet);
+            });
+            item.appendChild(button);
+            celestialList.appendChild(item);
+        });
+        
+        // Add Proxima Centauri system to the list
+        if (proximaSystem) {
+            const proximaItem = document.createElement('li');
+            const proximaButton = document.createElement('button');
+            proximaButton.textContent = "Proxima Centauri";
+            proximaButton.addEventListener('click', () => {
+                startFollowing({ 
+                    mesh: proximaSystem.star, 
+                    name: "Proxima Centauri", 
+                    info: {
+                        name: "Proxima Centauri",
+                        type: "Red Dwarf Star",
+                        distance: "4.24 light-years",
+                        mass: "0.122 Solar Masses",
+                        radius: "0.154 Solar Radii",
+                        description: "The closest known star to the Sun and host to the exoplanet Proxima Centauri b."
+                    }
+                });
+            });
+            proximaItem.appendChild(proximaButton);
+            celestialList.appendChild(proximaItem);
+            
+            const proximaPlanetItem = document.createElement('li');
+            const proximaPlanetButton = document.createElement('button');
+            proximaPlanetButton.textContent = "Proxima Centauri b";
+            proximaPlanetButton.addEventListener('click', () => {
+                startFollowing({ 
+                    mesh: proximaSystem.planet, 
+                    name: "Proxima Centauri b", 
+                    info: {
+                        name: "Proxima Centauri b",
+                        type: "Exoplanet",
+                        distance: "4.24 light-years",
+                        mass: "1.17 Earth masses",
+                        orbitalPeriod: "11.2 Earth days",
+                        description: "An exoplanet orbiting in the habitable zone of Proxima Centauri."
+                    }
+                });
+            });
+            proximaPlanetItem.appendChild(proximaPlanetButton);
+            celestialList.appendChild(proximaPlanetItem);
+        }
+        
+        // Add Alpha Centauri System to the list
+        if (alphaCenSystem) {
+            const alphaCenItem = document.createElement('li');
+            const alphaCenButton = document.createElement('button');
+            alphaCenButton.textContent = "Alpha Centauri System";
+            alphaCenButton.addEventListener('click', () => {
+                startFollowing({ 
+                    mesh: alphaCenSystem.group, 
+                    name: "Alpha Centauri System", 
+                    info: {
+                        name: "Alpha Centauri System",
+                        type: "Binary Star System",
+                        distance: "4.37 light-years",
+                        description: "The closest star system to the Solar System, consisting of Alpha Centauri A and B."
+                    }
+                });
+            });
+            alphaCenItem.appendChild(alphaCenButton);
+            celestialList.appendChild(alphaCenItem);
+        }
+        
+        // Add nearby stars to the list
+        // Keep track of binary systems we've already added
+        const addedBinaries = new Set();
+        
+        nearbyStars.forEach(star => {
+            // Handle binary star systems
+            if (star.isBinaryComponent) {
+                // Get the base name (without A/B)
+                const baseName = star.name.includes(" A") ? star.name.replace(" A", "") : 
+                                star.name.includes(" B") ? star.name.replace(" B", "") : star.name;
+                
+                // Skip Alpha Centauri as it's already added above
+                if (baseName === "Alpha Centauri") return;
+                
+                // Skip if we've already added this binary system
+                if (addedBinaries.has(baseName)) return;
+                
+                // Mark this binary system as added
+                addedBinaries.add(baseName);
+                
+                // Add the binary system as a single entry
+                const item = document.createElement('li');
+                const button = document.createElement('button');
+                button.textContent = baseName + " System";
+                button.addEventListener('click', () => {
+                    startFollowing({ 
+                        mesh: star.binaryGroup, 
+                        name: baseName + " System", 
+                        info: {
+                            name: baseName + " System",
+                            type: "Binary Star System",
+                            description: "A binary star system containing " + baseName + " A and " + baseName + " B"
+                        }
+                    });
+                });
+                item.appendChild(button);
+                celestialList.appendChild(item);
+            } else {
+                // Add single stars
+                const item = document.createElement('li');
+                const button = document.createElement('button');
+                button.textContent = star.name;
+                button.addEventListener('click', () => {
+                    startFollowing({ 
+                        mesh: star.mesh, 
+                        name: star.name, 
+                        info: star.info
+                    });
+                });
+                item.appendChild(button);
+                celestialList.appendChild(item);
+            }
+        });
+
+        // Event listeners
+        window.addEventListener('mousemove', onMouseMove, false);
+        window.addEventListener('click', onClick, false);
+
+        // Animation loop
+        const animate = () => {
+            requestAnimationFrame(animate);
+            
+            // Update controls
+            controls.update();
+            
+            // Rotate sun
+            sunGroup.rotation.y += 0.001;
+            
+            // Update planet positions using elliptical orbits
+            planets.forEach(planet => {
+                planet.angle += planet.speed;
+                
+                // Calculate position in elliptical orbit
+                const r = planet.semiMajorAxis * (1 - planet.eccentricity * planet.eccentricity) / 
+                         (1 + planet.eccentricity * Math.cos(planet.angle));
+                
+                // Position the planet within its group (orbit plane)
+                planet.mesh.position.x = r * Math.cos(planet.angle);
+                planet.mesh.position.z = r * Math.sin(planet.angle);
+                
+                // Rotate planets on their axis
+                const rotationSpeed = planet.semiMajorAxis < 100 ? 0.02 : 
+                                    planet.semiMajorAxis < 600 ? 0.005 : 0.001;
+                planet.mesh.rotation.y += rotationSpeed;
+                
+                // Rotate rings independently for planets with rings
+                if (planet.info.hasRings && planet.mesh.children.length > 1) {
+                    // Find the ring group (second child)
+                    const ringGroup = planet.mesh.children[1];
+                    if (ringGroup instanceof THREE.Group) {
+                        ringGroup.rotation.z += 0.002;
+                    }
+                }
+            });
+            
+            // Update Proxima Centauri system
+            if (proximaSystem) {
+                proximaSystem.angle += 0.005;
+                proximaSystem.planet.position.x = proximaSystem.orbitRadius * Math.cos(proximaSystem.angle);
+                proximaSystem.planet.position.z = proximaSystem.orbitRadius * Math.sin(proximaSystem.angle);
+                proximaSystem.star.rotation.y += 0.001;
+            }
+            
+            // Update Alpha Centauri binary system
+            if (alphaCenSystem) {
+                alphaCenSystem.angle += alphaCenSystem.speed;
+                
+                // Position the stars in a simple circular orbit around the center of mass
+                // The stars should be on opposite sides of the center of mass
+                const orbitRadius = 50;
+                alphaCenSystem.starA.position.x = -orbitRadius * Math.cos(alphaCenSystem.angle);
+                alphaCenSystem.starA.position.z = -orbitRadius * Math.sin(alphaCenSystem.angle);
+                
+                alphaCenSystem.starB.position.x = orbitRadius * Math.cos(alphaCenSystem.angle);
+                alphaCenSystem.starB.position.z = orbitRadius * Math.sin(alphaCenSystem.angle);
+                
+                // Rotate the stars
+                alphaCenSystem.starA.rotation.y += 0.002;
+                alphaCenSystem.starB.rotation.y += 0.002;
+            }
+            
+            // Rotate nearby stars
+            nearbyStars.forEach(star => {
+                star.mesh.rotation.y += 0.001;
+            });
+            
+            // Animate binary star systems
+            // Keep track of binary systems we've already animated
+            const animatedBinaries = new Set();
+            
+            nearbyStars.forEach(star => {
+                if (star.mesh) {
+                    // Rotate individual stars
+                    star.mesh.rotation.y += 0.001;
+                    
+                    // Handle binary star systems
+                    if (star.isBinaryComponent && star.binaryGroup) {
+                        // Get the base name (without A/B)
+                        const baseName = star.name.includes(" A") ? star.name.replace(" A", "") : 
+                                        star.name.includes(" B") ? star.name.replace(" B", "") : star.name;
+                        
+                        // Skip if we've already animated this binary system
+                        if (animatedBinaries.has(baseName)) return;
+                        
+                        // Mark this binary system as animated
+                        animatedBinaries.add(baseName);
+                        
+                        // Animate the binary system (rotate the entire group)
+                        const angle = Date.now() * 0.0001;
+                        const orbitRadius = 30;
+                        
+                        // Find both components of the binary system
+                        const componentA = nearbyStars.find(s => s.name === baseName + " A");
+                        const componentB = nearbyStars.find(s => s.name === baseName + " B");
+                        
+                        if (componentA) {
+                            componentA.mesh.position.x = -orbitRadius * Math.cos(angle);
+                            componentA.mesh.position.z = -orbitRadius * Math.sin(angle);
+                        }
+                        
+                        if (componentB) {
+                            componentB.mesh.position.x = orbitRadius * Math.cos(angle);
+                            componentB.mesh.position.z = orbitRadius * Math.sin(angle);
+                        }
+                    }
+                }
+            });
+            
+            // If we're following a target, update camera position
+            if (followingTarget && !userHasMovedCamera) {
+                const worldPos = new THREE.Vector3();
+                followingTarget.mesh.getWorldPosition(worldPos);
+                
+                // Apply offset to camera position
+                const targetPosition = worldPos.clone().add(followingOffset);
+                camera.position.lerp(targetPosition, 0.05);
+                
+                // Update controls target
+                controls.target.lerp(worldPos, 0.05);
+            }
+            
+            renderer.render(scene, camera);
+        };
+
+        animate();
+    </script>
+</body>
+</html>
