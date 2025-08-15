@@ -26,7 +26,3 @@ View the live version: [Solar System Animation](https://maternion.github.io/Sola
   - Transform properties for 3D effects
   - CSS Grid/Flexbox for responsive layout
   - Custom properties (CSS variables) for easy customization
-
-## 📁 Project Structure
-
-
