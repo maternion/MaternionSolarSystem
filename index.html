@@ -1079,8 +1079,16 @@
             mouse.y = -(event.clientY / window.innerHeight) * 2 + 1;
         };
 
-        // Handle mouse clicks
-        const onClick = () => {
+        // Handle touch moves
+        const onTouchMove = (event) => {
+            if (event.touches.length === 1) {
+                mouse.x = (event.touches[0].clientX / window.innerWidth) * 2 - 1;
+                mouse.y = -(event.touches[0].clientY / window.innerHeight) * 2 + 1;
+            }
+        };
+
+        // Generic function to handle object selection
+        const selectObject = (position) => {
             // Update the picking ray with the camera and mouse position
             raycaster.setFromCamera(mouse, camera);
             
@@ -1105,7 +1113,7 @@
                     startFollowing(planet);
                     // Show planet info
                     showPlanetInfo(planet.info, intersects[i].point);
-                    break;
+                    return;
                 }
                 
                 // Check if we clicked on the sun
@@ -1126,7 +1134,7 @@
                         diameter: "1.3927 million km",
                         description: "The star at the center of our Solar System."
                     }, intersects[i].point);
-                    break;
+                    return;
                 }
                 
                 // Check if we clicked on Proxima Centauri
@@ -1154,7 +1162,7 @@
                         radius: "0.154 Solar Radii",
                         description: "The closest known star to the Sun and host to the exoplanet Proxima Centauri b."
                     }, intersects[i].point);
-                    break;
+                    return;
                 }
                 
                 // Check if we clicked on Proxima Centauri b
@@ -1181,7 +1189,7 @@
                         orbitalPeriod: "11.2 Earth days",
                         description: "An exoplanet orbiting in the habitable zone of Proxima Centauri."
                     }, intersects[i].point);
-                    break;
+                    return;
                 }
                 
                 // Check if we clicked on a nearby star
@@ -1210,13 +1218,27 @@
                         info: nearbyStar.info
                     });
                     showPlanetInfo(nearbyStar.info, intersects[i].point);
-                    break;
+                    return;
                 }
             }
             
             // If we didn't click on anything, hide the info box
             if (intersects.length === 0) {
                 planetInfo.style.display = 'none';
+            }
+        };
+
+        // Handle mouse clicks
+        const onClick = () => {
+            selectObject();
+        };
+
+        // Handle touch events
+        const onTouchStart = (event) => {
+            if (event.touches.length === 1) {
+                mouse.x = (event.touches[0].clientX / window.innerWidth) * 2 - 1;
+                mouse.y = -(event.touches[0].clientY / window.innerHeight) * 2 + 1;
+                selectObject();
             }
         };
 
@@ -1423,6 +1445,10 @@
         // Event listeners
         window.addEventListener('mousemove', onMouseMove, false);
         window.addEventListener('click', onClick, false);
+        
+        // Touch event listeners for mobile devices
+        window.addEventListener('touchmove', onTouchMove, false);
+        window.addEventListener('touchstart', onTouchStart, false);
 
         // Animation loop
         const animate = () => {
