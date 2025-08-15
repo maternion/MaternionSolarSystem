@@ -673,7 +673,7 @@
             }
             
             // Apply orbital inclination to the group
-            planetGroup.rotation.x = inclination * Math.PI / 180;
+            // planetGroup.rotation.x = inclination * Math.PI / 180;
             
             // Add to scene and array
             scene.add(planetGroup);
@@ -698,14 +698,13 @@
         scene.add(ambientLight);
 
         // Add point light (sun light) - position it at the sun
-        const sunLight = new THREE.PointLight(0xffffff, 1.5, 5000);
+        const sunLight = new THREE.PointLight(0xffffff, 1.5, 10000);
         sunLight.position.set(0, 0, 0);
         scene.add(sunLight);
         
-        // Add additional directional light for better shading
-        const directionalLight = new THREE.DirectionalLight(0xffffff, 0.5);
-        directionalLight.position.set(500, 500, 500);
-        scene.add(directionalLight);
+        // Add hemisphere light for more natural illumination
+        const hemisphereLight = new THREE.HemisphereLight(0xffffbb, 0x080820, 0.3);
+        scene.add(hemisphereLight);
         
         // Create Proxima Centauri system
         const createProximaCentauriSystem = () => {
@@ -1672,9 +1671,18 @@
                 const r = planet.semiMajorAxis * (1 - planet.eccentricity * planet.eccentricity) / 
                          (1 + planet.eccentricity * Math.cos(planet.angle));
                 
-                // Position the planet within its group (orbit plane)
-                planet.mesh.position.x = r * Math.cos(planet.angle);
-                planet.mesh.position.z = r * Math.sin(planet.angle);
+                // Position the planet in 3D space with proper inclination
+                const x = r * Math.cos(planet.angle);
+                const z = r * Math.sin(planet.angle);
+                
+                // Apply orbital inclination (convert to radians) - match orbit creation
+                const inclinationRad = planet.inclination * Math.PI / 180;
+                const y = z * Math.sin(inclinationRad);
+                const adjustedZ = z * Math.cos(inclinationRad);
+                
+                planet.mesh.position.x = x;
+                planet.mesh.position.y = y;
+                planet.mesh.position.z = adjustedZ;
                 
                 // Rotate planets on their axis
                 const rotationSpeed = planet.semiMajorAxis < 100 ? 0.02 : 
