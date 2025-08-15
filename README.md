@@ -16,7 +16,7 @@ An interactive 3D solar system model built with pure HTML and CSS, featuring rea
 
 ## 🚀 Live Demo
 
-View the live version: [Solar System Animation](https://maternion.github.io/Solar-System-Model)
+View the live version: [Solar System Animation](https://maternion.github.io/MaternionPlanetrayModel)
 
 ## 🛠️ Technologies Used
 
