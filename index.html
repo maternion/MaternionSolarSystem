@@ -174,20 +174,58 @@
             transform: translateX(-50%);
             color: white;
             background-color: rgba(0, 0, 0, 0.7);
-            padding: 5px 10px;
+            padding: 3px 8px;
             border-radius: 3px;
             display: none;
             z-index: 100;
             max-width: 90vw;
             text-align: center;
+            font-size: 12px;
         }
         
         /* Mobile-friendly follow indicator */
         @media (max-width: 768px) {
             #followIndicator {
                 top: 60px;
-                font-size: 12px;
-                padding: 3px 8px;
+                font-size: 11px;
+                padding: 2px 6px;
+            }
+        }
+        
+        /* Additional mobile optimizations */
+        @media (max-width: 768px) {
+            #info {
+                font-size: 10px;
+                top: 5px;
+            }
+            
+            #navigation {
+                max-width: 200px;
+                padding: 5px;
+                top: 5px;
+                left: 5px;
+            }
+            
+            .dropdown-btn {
+                padding: 8px;
+                font-size: 14px;
+            }
+            
+            .dropdown-content {
+                max-height: 50vh;
+            }
+            
+            #navigation ul {
+                max-height: 50vh;
+            }
+            
+            #followIndicator {
+                top: 70px;
+                left: 10px;
+                transform: none;
+                font-size: 11px;
+                padding: 2px 6px;
+                max-width: 80vw;
             }
         }
     </style>
@@ -659,7 +697,7 @@
         const ambientLight = new THREE.AmbientLight(0x333333);
         scene.add(ambientLight);
 
-        // Add point light (sun light)
+        // Add point light (sun light) - position it at the sun
         const sunLight = new THREE.PointLight(0xffffff, 1.5, 5000);
         sunLight.position.set(0, 0, 0);
         scene.add(sunLight);
