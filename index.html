@@ -214,8 +214,20 @@
         // Create scene, camera, and renderer
         const scene = new THREE.Scene();
         const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 20000);
-        const renderer = new THREE.WebGLRenderer({ antialias: true });
+        const renderer = new THREE.WebGLRenderer({ 
+            antialias: true,
+            alpha: true,
+            precision: "highp"
+        });
+        
+        // Improve rendering quality
+        renderer.setPixelRatio(window.devicePixelRatio || 1);
         renderer.setSize(window.innerWidth, window.innerHeight);
+        renderer.shadowMap.enabled = true;
+        renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+        renderer.physicallyCorrectLights = true;
+        renderer.outputEncoding = THREE.sRGBEncoding;
+        
         document.body.appendChild(renderer.domElement);
 
         // Add orbit controls
@@ -254,11 +266,13 @@
             const starsMaterial = new THREE.PointsMaterial({
                 color: 0xffffff,
                 size: 1.5,
-                sizeAttenuation: false
+                sizeAttenuation: false,
+                transparent: true,
+                opacity: 0.8
             });
             
             const starsVertices = [];
-            const starCount = 5000;
+            const starCount = 10000;
             
             for (let i = 0; i < starCount; i++) {
                 const x = THREE.MathUtils.randFloatSpread(20000);
@@ -530,13 +544,14 @@
             const planetGroup = new THREE.Group();
             
             // Create planet
-            const geometry = new THREE.SphereGeometry(radius, 32, 32);
+            const geometry = new THREE.SphereGeometry(radius, 64, 64);
             const material = new THREE.MeshPhongMaterial({ 
                 color: color,
                 specular: 0x111111,
                 shininess: 30,
                 emissive: 0x000000,
-                emissiveIntensity: 0.1
+                emissiveIntensity: 0.1,
+                flatShading: false
             });
             const planet = new THREE.Mesh(geometry, material);
             
@@ -1153,6 +1168,7 @@
             camera.aspect = window.innerWidth / window.innerHeight;
             camera.updateProjectionMatrix();
             renderer.setSize(window.innerWidth, window.innerHeight);
+            renderer.setPixelRatio(window.devicePixelRatio || 1);
         });
 
         // Raycasting for planet selection
