@@ -29,6 +29,18 @@
             z-index: 100;
         }
         
+        /* Mobile-friendly controls info */
+        @media (max-width: 768px) {
+            #info {
+                font-size: 12px;
+                top: 5px;
+            }
+            
+            #info p {
+                margin: 5px 0;
+            }
+        }
+        
         #navigation {
             position: absolute;
             top: 10px;
@@ -37,10 +49,64 @@
             background-color: rgba(0, 0, 0, 0.7);
             padding: 10px;
             border-radius: 5px;
-            max-height: 90vh;
-            overflow-y: auto;
             z-index: 100;
             max-width: 300px;
+        }
+        
+        /* Dropdown styles for mobile */
+        .dropdown {
+            position: relative;
+            display: inline-block;
+            width: 100%;
+        }
+        
+        .dropdown-btn {
+            background-color: #333;
+            color: white;
+            padding: 10px;
+            font-size: 16px;
+            border: none;
+            cursor: pointer;
+            width: 100%;
+            text-align: left;
+            border-radius: 3px;
+        }
+        
+        .dropdown-btn:hover {
+            background-color: #555;
+        }
+        
+        .dropdown-content {
+            display: none;
+            position: absolute;
+            background-color: #333;
+            min-width: 160px;
+            max-height: 400px;
+            overflow-y: auto;
+            box-shadow: 0px 8px 16px 0px rgba(0,0,0,0.2);
+            z-index: 101;
+            width: 100%;
+            border-radius: 3px;
+        }
+        
+        .dropdown-content.show {
+            display: block;
+        }
+        
+        .dropdown-content button {
+            color: white;
+            padding: 12px 16px;
+            text-decoration: none;
+            display: block;
+            width: 100%;
+            text-align: left;
+            border: none;
+            background: none;
+            cursor: pointer;
+        }
+        
+        .dropdown-content button:hover {
+            background-color: #555;
         }
         
         #navigation h3 {
@@ -86,6 +152,18 @@
             z-index: 1000;
             min-width: 150px;
             display: none;
+            max-width: 90vw; /* Prevent going off screen on mobile */
+            box-sizing: border-box;
+        }
+        
+        /* Responsive planet info for mobile */
+        @media (max-width: 768px) {
+            .planet-info {
+                max-width: 80vw;
+                left: 10px !important;
+                right: 10px !important;
+                margin: 0 auto;
+            }
         }
         
         .planet-info h3 {
@@ -108,16 +186,33 @@
             border-radius: 3px;
             display: none;
             z-index: 100;
+            max-width: 90vw;
+            text-align: center;
+        }
+        
+        /* Mobile-friendly follow indicator */
+        @media (max-width: 768px) {
+            #followIndicator {
+                top: 60px;
+                font-size: 12px;
+                padding: 3px 8px;
+            }
         }
     </style>
 </head>
 <body>
     <div id="info">
-        <p>Controls: Left click + drag to rotate | Right click + drag to pan | Scroll to zoom | Click on objects for information</p>
+        <p>Desktop: Left click + drag to rotate | Right click + drag to pan | Scroll to zoom</p>
+        <p>Mobile: Touch + drag to rotate | Two-finger drag to pan | Pinch to zoom</p>
+        <p>Click/Tap on objects for information</p>
     </div>
     <div id="navigation">
-        <h3>Celestial Bodies</h3>
-        <ul id="celestialList"></ul>
+        <div class="dropdown">
+            <button class="dropdown-btn">Celestial Bodies ▼</button>
+            <div class="dropdown-content" id="celestialDropdown">
+                <ul id="celestialList"></ul>
+            </div>
+        </div>
     </div>
     <div id="followIndicator">Following: <span id="followTarget"></span> | Move camera to stop following</div>
     <div id="planetInfo" class="planet-info"></div>
@@ -1246,8 +1341,8 @@
         const showPlanetInfo = (info, position) => {
             // Convert 3D position to 2D screen position
             const vector = position.clone().project(camera);
-            const x = (vector.x * 0.5 + 0.5) * window.innerWidth;
-            const y = -(vector.y * 0.5 - 0.5) * window.innerHeight;
+            let x = (vector.x * 0.5 + 0.5) * window.innerWidth;
+            let y = -(vector.y * 0.5 - 0.5) * window.innerHeight;
             
             // Update info box content
             let infoHTML = `<h3>${info.name} (${info.type})</h3>`;
@@ -1266,9 +1361,31 @@
             
             planetInfo.innerHTML = infoHTML;
             
-            // Position info box near the planet
-            planetInfo.style.left = `${x + 10}px`;
-            planetInfo.style.top = `${y + 10}px`;
+            // Temporarily show the info box to calculate its dimensions
+            planetInfo.style.visibility = 'hidden';
+            planetInfo.style.display = 'block';
+            
+            // Get the actual dimensions
+            const infoBoxWidth = planetInfo.offsetWidth;
+            const infoBoxHeight = planetInfo.offsetHeight;
+            
+            // Adjust position to keep within screen bounds
+            if (x + infoBoxWidth > window.innerWidth) {
+                x = window.innerWidth - infoBoxWidth - 10;
+            }
+            
+            if (y + infoBoxHeight > window.innerHeight) {
+                y = window.innerHeight - infoBoxHeight - 10;
+            }
+            
+            // Ensure it doesn't go off the left or top of screen
+            if (x < 10) x = 10;
+            if (y < 10) y = 10;
+            
+            // Position info box
+            planetInfo.style.left = `${x}px`;
+            planetInfo.style.top = `${y}px`;
+            planetInfo.style.visibility = 'visible';
             planetInfo.style.display = 'block';
             
             // Hide info box after 5 seconds
@@ -1295,12 +1412,29 @@
 
         // Create navigation list
         const celestialList = document.getElementById('celestialList');
+        const dropdownBtn = document.querySelector('.dropdown-btn');
+        const dropdownContent = document.getElementById('celestialDropdown');
+        
+        // Toggle dropdown
+        dropdownBtn.addEventListener('click', function() {
+            dropdownContent.classList.toggle('show');
+        });
+        
+        // Close dropdown when clicking outside
+        window.addEventListener('click', function(event) {
+            if (!event.target.matches('.dropdown-btn')) {
+                if (dropdownContent.classList.contains('show')) {
+                    dropdownContent.classList.remove('show');
+                }
+            }
+        });
         
         // Add Sun to the list
         const sunItem = document.createElement('li');
         const sunButton = document.createElement('button');
         sunButton.textContent = "Sun";
         sunButton.addEventListener('click', () => {
+            dropdownContent.classList.remove('show'); // Close dropdown
             startFollowing({ mesh: sun, name: "Sun", info: {
                 name: "Sun",
                 type: "Star",
@@ -1318,6 +1452,7 @@
             const button = document.createElement('button');
             button.textContent = planet.info.name;
             button.addEventListener('click', () => {
+                dropdownContent.classList.remove('show'); // Close dropdown
                 startFollowing(planet);
             });
             item.appendChild(button);
@@ -1330,6 +1465,7 @@
             const proximaButton = document.createElement('button');
             proximaButton.textContent = "Proxima Centauri";
             proximaButton.addEventListener('click', () => {
+                dropdownContent.classList.remove('show'); // Close dropdown
                 startFollowing({ 
                     mesh: proximaSystem.star, 
                     name: "Proxima Centauri", 
@@ -1350,6 +1486,7 @@
             const proximaPlanetButton = document.createElement('button');
             proximaPlanetButton.textContent = "Proxima Centauri b";
             proximaPlanetButton.addEventListener('click', () => {
+                dropdownContent.classList.remove('show'); // Close dropdown
                 startFollowing({ 
                     mesh: proximaSystem.planet, 
                     name: "Proxima Centauri b", 
@@ -1373,6 +1510,7 @@
             const alphaCenButton = document.createElement('button');
             alphaCenButton.textContent = "Alpha Centauri System";
             alphaCenButton.addEventListener('click', () => {
+                dropdownContent.classList.remove('show'); // Close dropdown
                 startFollowing({ 
                     mesh: alphaCenSystem.group, 
                     name: "Alpha Centauri System", 
@@ -1413,6 +1551,7 @@
                 const button = document.createElement('button');
                 button.textContent = baseName + " System";
                 button.addEventListener('click', () => {
+                    dropdownContent.classList.remove('show'); // Close dropdown
                     startFollowing({ 
                         mesh: star.binaryGroup, 
                         name: baseName + " System", 
@@ -1431,6 +1570,7 @@
                 const button = document.createElement('button');
                 button.textContent = star.name;
                 button.addEventListener('click', () => {
+                    dropdownContent.classList.remove('show'); // Close dropdown
                     startFollowing({ 
                         mesh: star.mesh, 
                         name: star.name, 
