@@ -20,25 +20,18 @@
         
         #info {
             position: absolute;
-            top: 10px;
+            top: 5px;
             width: 100%;
             text-align: center;
             color: white;
-            font-size: 14px;
+            font-size: 11px;
             pointer-events: none;
             z-index: 100;
+            line-height: 1.2;
         }
         
-        /* Mobile-friendly controls info */
-        @media (max-width: 768px) {
-            #info {
-                font-size: 12px;
-                top: 5px;
-            }
-            
-            #info p {
-                margin: 5px 0;
-            }
+        #info p {
+            margin: 2px 0;
         }
         
         #navigation {
@@ -81,7 +74,7 @@
             position: absolute;
             background-color: #333;
             min-width: 160px;
-            max-height: 400px;
+            max-height: 80vh;
             overflow-y: auto;
             box-shadow: 0px 8px 16px 0px rgba(0,0,0,0.2);
             z-index: 101;
@@ -118,8 +111,7 @@
             list-style-type: none;
             padding: 0;
             margin: 0;
-            max-height: 80vh;
-            overflow-y: auto;
+            max-height: 70vh;
         }
         
         #navigation li {
@@ -1206,8 +1198,10 @@
                     isClickingObject = true;
                     // Start following this planet
                     startFollowing(planet);
-                    // Show planet info
-                    showPlanetInfo(planet.info, intersects[i].point);
+                    // Show planet info at the center of the planet
+                    const planetCenter = new THREE.Vector3();
+                    planet.mesh.getWorldPosition(planetCenter);
+                    showPlanetInfo(planet.info, planetCenter);
                     return;
                 }
                 
@@ -1222,13 +1216,16 @@
                         diameter: "1.3927 million km",
                         description: "The star at the center of our Solar System."
                     }});
+                    // Show planet info at the center of the sun
+                    const sunCenter = new THREE.Vector3();
+                    sun.getWorldPosition(sunCenter);
                     showPlanetInfo({
                         name: "Sun",
                         type: "Star",
                         mass: "1.989 × 10³⁰ kg",
                         diameter: "1.3927 million km",
                         description: "The star at the center of our Solar System."
-                    }, intersects[i].point);
+                    }, sunCenter);
                     return;
                 }
                 
@@ -1249,6 +1246,9 @@
                             description: "The closest known star to the Sun and host to the exoplanet Proxima Centauri b."
                         }
                     });
+                    // Show planet info at the center of Proxima Centauri
+                    const proximaCenter = new THREE.Vector3();
+                    proximaSystem.star.getWorldPosition(proximaCenter);
                     showPlanetInfo({
                         name: "Proxima Centauri",
                         type: "Red Dwarf Star",
@@ -1256,7 +1256,7 @@
                         mass: "0.122 Solar Masses",
                         radius: "0.154 Solar Radii",
                         description: "The closest known star to the Sun and host to the exoplanet Proxima Centauri b."
-                    }, intersects[i].point);
+                    }, proximaCenter);
                     return;
                 }
                 
@@ -1276,6 +1276,9 @@
                             description: "An exoplanet orbiting in the habitable zone of Proxima Centauri."
                         }
                     });
+                    // Show planet info at the center of Proxima Centauri b
+                    const proximaPlanetCenter = new THREE.Vector3();
+                    proximaSystem.planet.getWorldPosition(proximaPlanetCenter);
                     showPlanetInfo({
                         name: "Proxima Centauri b",
                         type: "Exoplanet",
@@ -1283,7 +1286,7 @@
                         mass: "1.17 Earth masses",
                         orbitalPeriod: "11.2 Earth days",
                         description: "An exoplanet orbiting in the habitable zone of Proxima Centauri."
-                    }, intersects[i].point);
+                    }, proximaPlanetCenter);
                     return;
                 }
                 
@@ -1312,7 +1315,10 @@
                         name: nearbyStar.name, 
                         info: nearbyStar.info
                     });
-                    showPlanetInfo(nearbyStar.info, intersects[i].point);
+                    // Show planet info at the center of the star
+                    const starCenter = new THREE.Vector3();
+                    nearbyStar.mesh.getWorldPosition(starCenter);
+                    showPlanetInfo(nearbyStar.info, starCenter);
                     return;
                 }
             }
@@ -1369,6 +1375,9 @@
             const infoBoxWidth = planetInfo.offsetWidth;
             const infoBoxHeight = planetInfo.offsetHeight;
             
+            // Position the top-left corner of the popup at the object's center
+            // No adjustment needed - x,y already represents the center of the object
+            
             // Adjust position to keep within screen bounds
             if (x + infoBoxWidth > window.innerWidth) {
                 x = window.innerWidth - infoBoxWidth - 10;
@@ -1416,13 +1425,14 @@
         const dropdownContent = document.getElementById('celestialDropdown');
         
         // Toggle dropdown
-        dropdownBtn.addEventListener('click', function() {
+        dropdownBtn.addEventListener('click', function(event) {
             dropdownContent.classList.toggle('show');
+            event.stopPropagation(); // Prevent event from bubbling to window listener
         });
         
         // Close dropdown when clicking outside
         window.addEventListener('click', function(event) {
-            if (!event.target.matches('.dropdown-btn')) {
+            if (!event.target.matches('.dropdown-btn') && !dropdownContent.contains(event.target)) {
                 if (dropdownContent.classList.contains('show')) {
                     dropdownContent.classList.remove('show');
                 }
